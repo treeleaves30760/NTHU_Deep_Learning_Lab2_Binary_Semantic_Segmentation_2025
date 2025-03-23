@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 
-from models.unet import UNet
+from models.unet import UNet, UNetLarge, UNetXL
 from models.resnet34_unet import ResNet34_UNet
 from oxford_pet import load_dataset
 
@@ -47,8 +47,9 @@ def get_args():
     parser.add_argument('--batch_size', '-b', type=int,
                         default=1, help='批次大小')
     parser.add_argument('--model_type', type=str, default='unet',
-                        choices=['unet', 'resnet34_unet'],
-                        help='模型架構 (unet 或 resnet34_unet)')
+                        choices=['unet', 'unet_large',
+                                 'unet_xl', 'resnet34_unet'],
+                        help='模型架構 (unet, unet_large, unet_xl 或 resnet34_unet)')
     parser.add_argument('--output_dir', type=str, default='output',
                         help='保存輸出預測的目錄')
 
@@ -67,10 +68,15 @@ if __name__ == '__main__':
     # 加載模型
     if args.model_type.lower() == 'unet':
         model = UNet(n_channels=3, n_classes=1, bilinear=True)
+    elif args.model_type.lower() == 'unet_large':
+        model = UNetLarge(n_channels=3, n_classes=1, bilinear=True)
+    elif args.model_type.lower() == 'unet_xl':
+        model = UNetXL(n_channels=3, n_classes=1, bilinear=True)
     elif args.model_type.lower() == 'resnet34_unet':
         model = ResNet34_UNet(n_classes=1, pretrained=False, bilinear=True)
     else:
-        raise ValueError("不支持的模型類型。請選擇 'unet' 或 'resnet34_unet'")
+        raise ValueError(
+            "不支持的模型類型。請選擇 'unet'、'unet_large'、'unet_xl' 或 'resnet34_unet'")
 
     # 加載模型權重
     model.load_state_dict(torch.load(args.model, map_location=device))

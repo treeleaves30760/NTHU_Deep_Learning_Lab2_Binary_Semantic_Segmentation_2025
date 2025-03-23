@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from oxford_pet import load_dataset
-from models.unet import UNet
+from models.unet import UNet, UNetLarge, UNetXL
 from models.resnet34_unet import ResNet34_UNet
 from evaluate import evaluate
 
@@ -31,10 +31,15 @@ def train(args):
     # 初始化模型
     if args.model_type.lower() == 'unet':
         model = UNet(n_channels=3, n_classes=1, bilinear=True)
+    elif args.model_type.lower() == 'unet_large':
+        model = UNetLarge(n_channels=3, n_classes=1, bilinear=True)
+    elif args.model_type.lower() == 'unet_xl':
+        model = UNetXL(n_channels=3, n_classes=1, bilinear=True)
     elif args.model_type.lower() == 'resnet34_unet':
         model = ResNet34_UNet(n_classes=1, pretrained=True, bilinear=True)
     else:
-        raise ValueError("不支持的模型類型。請選擇 'unet' 或 'resnet34_unet'")
+        raise ValueError(
+            "不支持的模型類型。請選擇 'unet'、'unet_large'、'unet_xl' 或 'resnet34_unet'")
 
     model = model.to(device)
 
@@ -95,14 +100,15 @@ def get_args():
     parser.add_argument('--data_path', type=str,
                         help='輸入數據的路徑', default='./dataset/oxford-iiit-pet')
     parser.add_argument('--epochs', '-e', type=int,
-                        default=5, help='訓練周期數')
+                        default=10, help='訓練周期數')
     parser.add_argument('--batch_size', '-b', type=int,
-                        default=1, help='批次大小')
+                        default=16, help='批次大小')
     parser.add_argument('--learning-rate', '-lr', type=float,
                         default=1e-5, help='學習率')
     parser.add_argument('--model_type', type=str, default='unet',
-                        choices=['unet', 'resnet34_unet'],
-                        help='模型架構 (unet 或 resnet34_unet)')
+                        choices=['unet', 'unet_large',
+                                 'unet_xl', 'resnet34_unet'],
+                        help='模型架構 (unet, unet_large, unet_xl 或 resnet34_unet)')
 
     return parser.parse_args()
 
