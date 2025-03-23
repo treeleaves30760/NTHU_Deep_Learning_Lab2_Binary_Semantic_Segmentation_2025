@@ -19,7 +19,6 @@ def train(args):
     print(f"使用設備: {device}")
 
     # 加載數據集
-    print(f'args.data_path: {args.data_path}')
     train_dataset = load_dataset(args.data_path, mode="train")
     val_dataset = load_dataset(args.data_path, mode="valid")
 
@@ -94,7 +93,7 @@ def get_args():
     parser = argparse.ArgumentParser(
         description='使用圖像和目標遮罩訓練 UNet')
     parser.add_argument('--data_path', type=str,
-                        help='輸入數據的路徑', default='./dataset/oxford-iiit-pe')
+                        help='輸入數據的路徑', default='./dataset/oxford-iiit-pet')
     parser.add_argument('--epochs', '-e', type=int,
                         default=5, help='訓練周期數')
     parser.add_argument('--batch_size', '-b', type=int,
