@@ -12,9 +12,8 @@ from tqdm import tqdm
 
 from oxford_pet import load_dataset
 
+
 # 添加DICE損失函數
-
-
 class DiceLoss(nn.Module):
     def __init__(self, smooth=1.0):
         super(DiceLoss, self).__init__()
@@ -100,7 +99,7 @@ def train(args):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                scheduler.step()  # 每個batch更新學習率
+                scheduler.step()
 
                 epoch_loss += loss.item()
                 pbar.update(1)
@@ -136,7 +135,7 @@ def get_args():
     parser.add_argument('--batch_size', '-b', type=int,
                         default=16, help='批次大小')
     parser.add_argument('--learning-rate', '-lr', type=float,
-                        default=3e-4, help='學習率')  # 修改默認學習率為3e-4
+                        default=3e-4, help='學習率')
     parser.add_argument('--model_type', type=str, default='unet',
                         choices=['unet', 'unet_large',
                                  'unet_xl', 'resnet34_unet'],
