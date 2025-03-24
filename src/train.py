@@ -1,3 +1,6 @@
+from models.unet import UNet, UNetLarge, UNetXL
+from evaluate import evaluate
+from models.resnet34_unet import ResNet34_UNet
 import argparse
 import os
 import time
@@ -8,9 +11,28 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from oxford_pet import load_dataset
-from models.unet import UNet, UNetLarge, UNetXL
-from models.resnet34_unet import ResNet34_UNet
-from evaluate import evaluate
+
+# 添加DICE損失函數
+
+
+class DiceLoss(nn.Module):
+    def __init__(self, smooth=1.0):
+        super(DiceLoss, self).__init__()
+        self.smooth = smooth
+
+    def forward(self, pred, target):
+        # 應用sigmoid將logits轉換為概率
+        pred = torch.sigmoid(pred)
+
+        # 平滑處理
+        pred = pred.view(-1)
+        target = target.view(-1)
+
+        intersection = (pred * target).sum()
+        dice = (2. * intersection + self.smooth) / \
+            (pred.sum() + target.sum() + self.smooth)
+
+        return 1 - dice
 
 
 def train(args):
@@ -44,10 +66,19 @@ def train(args):
     model = model.to(device)
 
     # 定義損失函數和優化器
-    criterion = nn.BCEWithLogitsLoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, 'max', patience=2, factor=0.5)
+    criterion = DiceLoss(smooth=1.0)  # 使用DICE損失函數
+
+    # 使用AdamW優化器，提供更好的權重衰減
+    optimizer = optim.AdamW(
+        model.parameters(), lr=args.learning_rate, weight_decay=1e-4)
+
+    # 使用OneCycleLR學習率調度器，提供更好的收斂性能
+    total_steps = len(train_loader) * args.epochs
+    scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.learning_rate,
+                                              total_steps=total_steps,
+                                              pct_start=0.3,  # 30%時間用於預熱
+                                              div_factor=25,  # 初始學習率 = max_lr/div_factor
+                                              final_div_factor=1000)  # 最終學習率 = max_lr/(div_factor*final_div_factor)
 
     # 訓練循環
     best_dice = 0.0
@@ -69,17 +100,18 @@ def train(args):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+                scheduler.step()  # 每個batch更新學習率
 
                 epoch_loss += loss.item()
                 pbar.update(1)
-                pbar.set_postfix({'loss': loss.item()})
+                pbar.set_postfix(
+                    {'loss': loss.item(), 'lr': optimizer.param_groups[0]['lr']})
 
         # 驗證
         val_dice = evaluate(model, val_loader, device)
-        scheduler.step(val_dice)
 
         print(
-            f'Epoch {epoch+1}/{args.epochs}, Loss: {epoch_loss/len(train_loader):.4f}, 驗證 Dice: {val_dice:.4f}')
+            f'Epoch {epoch+1}/{args.epochs}, Loss: {epoch_loss/len(train_loader):.4f}, 驗證 Dice: {val_dice:.4f}, LR: {optimizer.param_groups[0]["lr"]:.6f}')
 
         # 保存最佳模型
         if val_dice > best_dice:
@@ -104,7 +136,7 @@ def get_args():
     parser.add_argument('--batch_size', '-b', type=int,
                         default=16, help='批次大小')
     parser.add_argument('--learning-rate', '-lr', type=float,
-                        default=1e-5, help='學習率')
+                        default=3e-4, help='學習率')  # 修改默認學習率為3e-4
     parser.add_argument('--model_type', type=str, default='unet',
                         choices=['unet', 'unet_large',
                                  'unet_xl', 'resnet34_unet'],
