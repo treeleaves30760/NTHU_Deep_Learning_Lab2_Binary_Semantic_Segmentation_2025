@@ -17,17 +17,17 @@ from torch.utils.tensorboard import SummaryWriter
 from oxford_pet import load_dataset
 
 
-# 添加DICE損失函數
+# Add DICE loss function
 class DiceLoss(nn.Module):
     def __init__(self, smooth=1.0):
         super(DiceLoss, self).__init__()
         self.smooth = smooth
 
     def forward(self, pred, target):
-        # 應用sigmoid將logits轉換為概率
+        # Apply sigmoid to convert logits to probabilities
         pred = torch.sigmoid(pred)
 
-        # 平滑處理
+        # Smoothing
         pred = pred.view(-1)
         target = target.view(-1)
 
@@ -39,41 +39,41 @@ class DiceLoss(nn.Module):
 
 
 def train(args):
-    # 檢查 CUDA 是否可用
+    # Check if CUDA is available
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"使用設備: {device}")
+    print(f"Using device: {device}")
 
-    # 建立儲存目錄
+    # Create storage directories
     os.makedirs('./saved_models', exist_ok=True)
     os.makedirs('./logs', exist_ok=True)
 
-    # 設定TensorBoard
+    # Set up TensorBoard
     log_dir = f'./logs/{time.strftime("%Y%m%d_%H%M%S")}_{args.model_type}'
     writer = SummaryWriter(log_dir)
 
-    # 建立CSV記錄檔案
+    # Create CSV log file
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     csv_path = f'./logs/{timestamp}_{args.model_type}_training_log.csv'
     csv_file = open(csv_path, 'w', newline='')
     csv_writer = csv.writer(csv_file)
     csv_writer.writerow(['Epoch', 'Train_Loss', 'Val_Dice', 'Learning_Rate'])
 
-    # 初始化記錄列表
+    # Initialize record lists
     train_losses = []
     val_dices = []
     learning_rates = []
 
-    # 加載數據集
+    # Load dataset
     train_dataset = load_dataset(args.data_path, mode="train")
     val_dataset = load_dataset(args.data_path, mode="valid")
 
-    # 創建數據加載器
+    # Create data loaders
     train_loader = DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(
         val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
-    # 初始化模型
+    # Initialize model
     if args.model_type.lower() == 'unet':
         model = UNet(n_channels=3, n_classes=1, bilinear=True)
     elif args.model_type.lower() == 'unet_large':
@@ -84,54 +84,54 @@ def train(args):
         model = ResNet34_UNet(n_classes=1, pretrained=True, bilinear=True)
     else:
         raise ValueError(
-            "不支持的模型類型。請選擇 'unet'、'unet_large'、'unet_xl' 或 'resnet34_unet'")
+            "Unsupported model type. Please choose 'unet', 'unet_large', 'unet_xl', or 'resnet34_unet'")
 
     model = model.to(device)
 
-    # 定義損失函數和優化器
-    criterion = DiceLoss(smooth=1.0)  # 使用DICE損失函數
+    # Define loss function and optimizer
+    criterion = DiceLoss(smooth=1.0)  # Use DICE loss function
 
-    # 使用AdamW優化器，提供更好的權重衰減
+    # Use AdamW optimizer for better weight decay
     optimizer = optim.AdamW(
         model.parameters(), lr=args.learning_rate, weight_decay=1e-4)
 
-    # 使用OneCycleLR學習率調度器，提供更好的收斂性能
+    # Use OneCycleLR learning rate scheduler for better convergence performance
     total_steps = len(train_loader) * args.epochs
     scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.learning_rate,
                                               total_steps=total_steps,
-                                              pct_start=0.3,  # 30%時間用於預熱
-                                              div_factor=25,  # 初始學習率 = max_lr/div_factor
-                                              final_div_factor=1000)  # 最終學習率 = max_lr/(div_factor*final_div_factor)
+                                              pct_start=0.3,  # 30% time for warm-up
+                                              div_factor=25,  # Initial learning rate = max_lr/div_factor
+                                              final_div_factor=1000)  # Final learning rate = max_lr/(div_factor*final_div_factor)
 
-    # 訓練循環
+    # Training loop
     best_dice = 0.0
     for epoch in range(args.epochs):
         model.train()
         epoch_loss = 0
-        batch_losses = []  # 記錄每個批次的損失
+        batch_losses = []  # Record losses for each batch
 
-        # 訓練
+        # Training
         with tqdm(total=len(train_loader), desc=f'Epoch {epoch+1}/{args.epochs}', unit='batch') as pbar:
             for batch_idx, batch in enumerate(train_loader):
                 images = batch['image'].to(device, dtype=torch.float32)
                 true_masks = batch['mask'].to(device, dtype=torch.float32)
 
-                # 前向傳播
+                # Forward pass
                 outputs = model(images)
                 loss = criterion(outputs, true_masks)
 
-                # 反向傳播和優化
+                # Backward propagation and optimization
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
                 scheduler.step()
 
-                # 記錄當前批次損失
+                # Record current batch loss
                 batch_loss = loss.item()
                 epoch_loss += batch_loss
                 batch_losses.append(batch_loss)
 
-                # 記錄到TensorBoard (每100個批次)
+                # Record to TensorBoard (every 100 batches)
                 if batch_idx % 100 == 0:
                     writer.add_scalar('Batch Loss', batch_loss,
                                       epoch * len(train_loader) + batch_idx)
@@ -142,47 +142,49 @@ def train(args):
                 pbar.set_postfix(
                     {'loss': batch_loss, 'lr': optimizer.param_groups[0]['lr']})
 
-        # 計算平均訓練損失
+        # Calculate average training loss
         avg_train_loss = epoch_loss / len(train_loader)
 
-        # 驗證
+        # Validation
         val_dice = evaluate(model, val_loader, device)
         current_lr = optimizer.param_groups[0]['lr']
 
-        # 記錄到列表
+        # Record to lists
         train_losses.append(float(avg_train_loss))
         val_dices.append(float(val_dice))
         learning_rates.append(float(current_lr))
 
-        # 記錄到TensorBoard
+        # Record to TensorBoard
         writer.add_scalar('Training Loss/epoch', avg_train_loss, epoch)
         writer.add_scalar('Validation Dice/epoch', val_dice, epoch)
         writer.add_scalar('Learning Rate/epoch', current_lr, epoch)
 
-        # 記錄到CSV
+        # Record to CSV
         csv_writer.writerow([epoch+1, avg_train_loss, val_dice, current_lr])
-        csv_file.flush()  # 立即寫入，不等待緩衝
+        csv_file.flush()  # Write immediately, don't wait for buffer
 
         print(
-            f'Epoch {epoch+1}/{args.epochs}, Loss: {avg_train_loss:.4f}, 驗證 Dice: {val_dice:.4f}, LR: {current_lr:.6f}')
+            f'Epoch {epoch+1}/{args.epochs}, Loss: {avg_train_loss:.4f}, Validation Dice: {val_dice:.4f}, LR: {current_lr:.6f}')
 
-        # 保存最佳模型
+        # Save best model
         if val_dice > best_dice:
             best_dice = val_dice
             model_path = f'./saved_models/{time.strftime("%Y%m%d_%H%M%S")}_{args.model_type}_best_model_{best_dice:.4f}.pth'
             torch.save(model.state_dict(), model_path)
-            print(f'保存新的最佳模型，Dice: {best_dice:.4f}，路徑: {model_path}')
+            print(
+                f'Saved new best model, Dice: {best_dice:.4f}, Path: {model_path}')
 
-    # 保存最終模型
+    # Save final model
     final_model_path = f'./saved_models/{args.model_type}_final_model.pth'
     torch.save(model.state_dict(), final_model_path)
-    print(f'訓練完成。最佳驗證 Dice: {best_dice:.4f}，最終模型路徑: {final_model_path}')
+    print(
+        f'Training completed. Best validation Dice: {best_dice:.4f}, Final model path: {final_model_path}')
 
-    # 關閉CSV文件和TensorBoard
+    # Close CSV file and TensorBoard
     csv_file.close()
     writer.close()
 
-    # 繪製並保存學習曲線
+    # Plot and save learning curves
     plot_learning_curves(train_losses, val_dices,
                          learning_rates, args.model_type)
 
@@ -195,10 +197,10 @@ def train(args):
 
 
 def plot_learning_curves(train_losses, val_dices, learning_rates, model_type):
-    """繪製學習曲線並保存為圖片"""
+    """Plot learning curves and save as image"""
     timestamp = time.strftime("%Y%m%d_%H%M%S")
 
-    # 確保數據在 CPU 上並轉換為 NumPy 陣列
+    # Ensure data is on CPU and convert to NumPy arrays
     if torch.is_tensor(train_losses):
         train_losses = train_losses.cpu().numpy()
     if torch.is_tensor(val_dices):
@@ -206,53 +208,55 @@ def plot_learning_curves(train_losses, val_dices, learning_rates, model_type):
     if torch.is_tensor(learning_rates):
         learning_rates = learning_rates.cpu().numpy()
 
-    # 創建圖表
+    # Create chart
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12))
 
-    # 繪製訓練損失和驗證Dice
+    # Plot training loss and validation Dice
     epochs = range(1, len(train_losses) + 1)
-    ax1.plot(epochs, train_losses, 'bo-', label='訓練損失')
-    ax1.plot(epochs, val_dices, 'ro-', label='驗證Dice係數')
-    ax1.set_title(f'{model_type} 模型訓練曲線')
+    ax1.plot(epochs, train_losses, 'bo-', label='Training Loss')
+    ax1.plot(epochs, val_dices, 'ro-', label='Validation Dice Coefficient')
+    ax1.set_title(f'{model_type} Model Training Curves')
     ax1.set_xlabel('Epochs')
-    ax1.set_ylabel('損失 / Dice係數')
+    ax1.set_ylabel('Loss / Dice Coefficient')
     ax1.legend()
     ax1.grid(True)
 
-    # 繪製學習率
-    ax2.plot(epochs, learning_rates, 'go-', label='學習率')
-    ax2.set_title('學習率變化')
+    # Plot learning rate
+    ax2.plot(epochs, learning_rates, 'go-', label='Learning Rate')
+    ax2.set_title('Learning Rate Changes')
     ax2.set_xlabel('Epochs')
-    ax2.set_ylabel('學習率')
+    ax2.set_ylabel('Learning Rate')
     ax2.legend()
     ax2.grid(True)
 
-    # 調整佈局並保存
+    # Adjust layout and save
     plt.tight_layout()
     plt.savefig(f'./logs/{timestamp}_{model_type}_learning_curves.png')
     plt.close()
-    print(f'學習曲線已保存到: ./logs/{timestamp}_{model_type}_learning_curves.png')
+    print(
+        f'Learning curves saved to: ./logs/{timestamp}_{model_type}_learning_curves.png')
 
 
 def get_args():
     parser = argparse.ArgumentParser(
-        description='使用圖像和目標遮罩訓練 UNet')
+        description='Train UNet with image and target mask')
     parser.add_argument('--data_path', type=str,
-                        help='輸入數據的路徑', default='./dataset/oxford-iiit-pet')
+                        help='Path to input data', default='./dataset/oxford-iiit-pet')
     parser.add_argument('--epochs', '-e', type=int,
-                        default=10, help='訓練周期數')
+                        default=10, help='Number of training epochs')
     parser.add_argument('--batch_size', '-b', type=int,
-                        default=16, help='批次大小')
+                        default=16, help='Batch size')
     parser.add_argument('--learning-rate', '-lr', type=float,
-                        default=3e-4, help='學習率')
+                        default=3e-4, help='Learning rate')
     parser.add_argument('--model_type', type=str, default='unet',
                         choices=['unet', 'unet_large',
                                  'unet_xl', 'resnet34_unet'],
-                        help='模型架構 (unet, unet_large, unet_xl 或 resnet34_unet)')
+                        help='Model architecture (unet, unet_large, unet_xl, or resnet34_unet)')
 
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     args = get_args()
-    train(args)
+    results = train(args)
+    print("Training finished!")

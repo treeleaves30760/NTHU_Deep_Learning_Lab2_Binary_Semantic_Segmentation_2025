@@ -7,46 +7,46 @@ from utils import dice_score
 
 def evaluate(net, data, device):
     """
-    評估網絡在給定數據集上的表現
+    Evaluate the network performance on a given dataset
 
     Args:
-        net: 神經網絡模型
-        data: 數據加載器
+        net: Neural network model
+        data: Data loader
         device: torch.device
 
     Returns:
-        float: 平均 Dice 分數
+        float: Average Dice score
     """
     net.eval()
     num_val_batches = len(data)
     dice_scores = 0
 
-    # 禁用梯度計算以加速推理
+    # Disable gradient calculation to speed up inference
     with torch.no_grad():
-        # 迭代驗證集
-        with tqdm(total=num_val_batches, desc='驗證中', unit='batch', leave=False) as pbar:
+        # Iterate through validation set
+        with tqdm(total=num_val_batches, desc='Validating', unit='batch', leave=False) as pbar:
             for batch in data:
                 images = batch['image'].to(device, dtype=torch.float32)
                 true_masks = batch['mask'].to(device, dtype=torch.float32)
 
-                # 預測
+                # Prediction
                 mask_pred = net(images)
 
-                # 應用 sigmoid 激活
+                # Apply sigmoid activation
                 mask_pred = torch.sigmoid(mask_pred)
 
-                # 轉換為二值遮罩 (0 或 1)
+                # Convert to binary mask (0 or 1)
                 mask_pred = (mask_pred > 0.5).float()
 
-                # 計算 Dice 分數
+                # Calculate Dice score
                 dice_scores += dice_score(mask_pred, true_masks)
 
                 pbar.update(1)
 
-    # 計算平均 Dice 分數
+    # Calculate average Dice score
     avg_dice = dice_scores / num_val_batches
 
-    # 切換回訓練模式
+    # Switch back to training mode
     net.train()
 
     return avg_dice

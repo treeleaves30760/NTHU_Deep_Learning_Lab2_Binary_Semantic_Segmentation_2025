@@ -136,21 +136,21 @@ def extract_archive(filepath):
 
 def load_dataset(data_path, mode):
     """
-    加載 Oxford-IIIT Pet 數據集
+    Load Oxford-IIIT Pet dataset
 
     Args:
-        data_path: 數據集路徑
-        mode: 'train', 'valid', 或 'test'
+        data_path: Dataset path
+        mode: 'train', 'valid', or 'test'
 
     Returns:
-        dataset: SimpleOxfordPetDataset 實例
+        dataset: SimpleOxfordPetDataset instance
     """
     if not os.path.exists(data_path):
         os.makedirs(data_path, exist_ok=True)
-        print(f"下載 Oxford-IIIT Pet 數據集到 {data_path}")
+        print(f"Downloading Oxford-IIIT Pet dataset to {data_path}")
         OxfordPetDataset.download(data_path)
 
-    # 創建並返回數據集
+    # Create and return dataset
     dataset = SimpleOxfordPetDataset(root=data_path, mode=mode)
 
     return dataset
