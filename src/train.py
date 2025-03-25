@@ -150,9 +150,9 @@ def train(args):
         current_lr = optimizer.param_groups[0]['lr']
 
         # 記錄到列表
-        train_losses.append(avg_train_loss)
-        val_dices.append(val_dice)
-        learning_rates.append(current_lr)
+        train_losses.append(float(avg_train_loss))
+        val_dices.append(float(val_dice))
+        learning_rates.append(float(current_lr))
 
         # 記錄到TensorBoard
         writer.add_scalar('Training Loss/epoch', avg_train_loss, epoch)
@@ -197,6 +197,14 @@ def train(args):
 def plot_learning_curves(train_losses, val_dices, learning_rates, model_type):
     """繪製學習曲線並保存為圖片"""
     timestamp = time.strftime("%Y%m%d_%H%M%S")
+
+    # 確保數據在 CPU 上並轉換為 NumPy 陣列
+    if torch.is_tensor(train_losses):
+        train_losses = train_losses.cpu().numpy()
+    if torch.is_tensor(val_dices):
+        val_dices = val_dices.cpu().numpy()
+    if torch.is_tensor(learning_rates):
+        learning_rates = learning_rates.cpu().numpy()
 
     # 創建圖表
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12))
