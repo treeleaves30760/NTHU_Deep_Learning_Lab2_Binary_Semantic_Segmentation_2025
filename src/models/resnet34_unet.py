@@ -87,6 +87,9 @@ class ResNet34_UNet(nn.Module):
         self.outc = OutConv(64, n_classes)
 
     def forward(self, x):
+        # 保存原始輸入大小，用於最終上采樣
+        input_size = x.size()[2:]
+
         # 編碼器
         e1 = self.encoder1(x)         # 64 通道, 1/2 解析度
         e1_pool = self.pool(e1)       # 64 通道, 1/4 解析度
@@ -104,9 +107,9 @@ class ResNet34_UNet(nn.Module):
         # 獲取最終預測
         logits = self.outc(x)
 
-        # 若需要，將輸出上採樣至輸入解析度
-        if logits.shape[2:] != x.shape[2:]:
+        # 確保輸出和輸入圖像大小一致
+        if logits.size()[2:] != input_size:
             logits = F.interpolate(
-                logits, size=x.shape[2:], mode='bilinear', align_corners=True)
+                logits, size=input_size, mode='bilinear', align_corners=True)
 
         return logits
